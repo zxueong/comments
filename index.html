@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>意見回饋與樹狀留言板</title>
+    <style>
+        :root {
+            --bg-body: #090a0f; --bg-container: #131622; --bg-input: #1a1e2e;
+            --border-main: #23283b; --border-input: #2d354f; --text-main: #e2e8f0;
+            --text-title: #ffffff; --text-muted: #64748b; --text-body: #cbd5e1;
+            --bg-reaction: #141824; --border-reaction: #232a3d; --bg-reply: #181d2f;
+        }
+        [data-theme=\"light\"] {
+            --bg-body: #f8fafc; --bg-container: #ffffff; --bg-input: #f1f5f9;
+            --border-main: #e2e8f0; --border-input: #cbd5e1; --text-main: #334155;
+            --text-title: #0f172a; --text-muted: #94a3b8; --text-body: #475569;
+            --bg-reaction: #f1f5f9; --border-reaction: #e2e8f0; --bg-reply: #f8fafc;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; transition: background-color 0.3s, border-color 0.3s, color 0.3s; }
+        body { background-color: var(--bg-body); color: var(--text-main); padding: 2rem 1rem; line-height: 1.5; min-height: 100vh; }
+        .container { max-width: 800px; margin: 0 auto; background: var(--bg-container); border: 1px solid var(--border-main); border-radius: 16px; padding: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; border-bottom: 1px solid var(--border-main); padding-bottom: 1rem; }
+        .header h1 { font-size: 1.5rem; color: var(--text-title); font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+        .theme-toggle { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0.5rem; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+        .theme-toggle:hover { color: var(--text-title); background: var(--bg-input); }
+        .form-group { margin-bottom: 1.25rem; position: relative; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
+        @media (max-width: 576px) { .form-row { grid-template-columns: 1fr; } }
+        label { display: block; margin-bottom: 0.5rem; font-size: 0.875rem; color: var(--text-muted); font-weight: 500; }
+        input, textarea, select { width: 100%; background: var(--bg-input); border: 1px solid var(--border-input); border-radius: 8px; padding: 0.75rem 1rem; color: var(--text-title); font-size: 0.95rem; outline: none; }
+        input:focus, textarea:focus, select:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }
+        textarea { resize: vertical; min-height: 120px; }
+        .word-counter { position: absolute; bottom: 0.75rem; right: 1rem; font-size: 0.75rem; color: var(--text-muted); pointer-events: none; }
+        .word-counter.danger { color: #ef4444; font-weight: bold; }
+        .btn-group { display: flex; justify-content: flex-end; gap: 0.75rem; }
+        button { padding: 0.75rem 1.5rem; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; border: none; display: flex; align-items: center; gap: 0.5rem; }
+        .btn-submit { background: #4f46e5; color: white; }
+        .btn-submit:hover { background: #4338ca; }
+        .btn-submit:disabled { background: var(--border-input); color: var(--text-muted); cursor: not-allowed; }
+        .btn-cancel { background: transparent; border: 1px solid var(--border-input); color: var(--text-main); }
+        .btn-cancel:hover { background: var(--bg-input); }
+        .comment-section { margin-top: 3rem; }
+        .section-title { font-size: 1.2rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; color: var(--text-title); }
+        .comment-list { display: flex; flex-direction: column; gap: 1.5rem; }
+        .comment-node { border-left: 2px solid var(--border-main); padding-left: 1.25rem; margin-left: 0.25rem; position: relative; }
+        .comment-node::before { content: ''; position: absolute; left: -2px; top: 24px; width: 12px; height: 2px; background: var(--border-main); }
+        .comment-node.root-node { border-left: none; padding-left: 0; margin-left: 0; }
+        .comment-node.root-node::before { display: none; }
+        .comment-card { background: var(--bg-container); border: 1px solid var(--border-main); border-radius: 12px; padding: 1.25rem; position: relative; }
+        .comment-card:hover { border-color: var(--border-input); }
+        .comment-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem; }
+        .user-info { display: flex; align-items: center; gap: 0.75rem; }
+        .avatar { width: 36px; height: 36px; border-radius: 50%; background: #4f46e5; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.9rem; text-transform: uppercase; }
+        .meta-text { display: flex; flex-direction: column; }
+        .username { font-weight: 600; color: var(--text-title); font-size: 0.95rem; }
+        .timestamp { font-size: 0.75rem; color: var(--text-muted); }
+        .badge { font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 4px; font-weight: 600; text-transform: uppercase; align-self: flex-start; margin-top: 0.2rem; }
+        .badge-suggestion { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+        [data-theme="light"] .badge-suggestion { background: #eff6ff; color: #2563eb; }
+        .badge-bug { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+        [data-theme="light"] .badge-bug { background: #fef2f2; color: #dc2626; }
+        .badge-compliment { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+        [data-theme="light"] .badge-compliment { background: #ecfdf5; color: #059669; }
+        .badge-other { background: rgba(107,114,128,0.15); color: #9ca3af; border: 1px solid rgba(107,114,128,0.3); }
+        [data-theme="light"] .badge-other { background: #f3f4f6; color: #4b5563; }
+        .comment-body { color: var(--text-body); font-size: 0.95rem; white-space: pre-wrap; word-break: break-word; margin-bottom: 1rem; }
+        .comment-footer { display: flex; gap: 1rem; align-items: center; font-size: 0.85rem; color: var(--text-muted); }
+        .action-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.5rem; border-radius: 6px; font-weight: 500; }
+        .action-btn:hover { color: var(--text-title); background: var(--bg-input); }
+        .action-btn.liked { color: #ef4444; }
+        .replies-container { margin-top: 1rem; display: flex; flex-direction: column; gap: 1rem; }
+        .reply-form-wrapper { margin-top: 1rem; background: var(--bg-reply); border: 1px solid var(--border-main); border-radius: 12px; padding: 1.25rem; animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+        .status-message { text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.95rem; }
+        .error-box { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; color: #ef4444; margin: 1rem 0; text-align: left; }
+        .loading-spinner { border: 2px solid var(--border-input); border-top: 2px solid #4f46e5; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; margin: 0 auto 0.5rem; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                意見回饋與樹狀留言板
+            </h1>
+            <button class="theme-toggle" id="themeToggle" title="切換深淺色模式">
+                <svg id="themeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
+            </button>
+        </div>
+
+        <form id="commentForm">
+            <div class="form-row">
+                <div>
+                    <label for="usernameInput">您的暱稱 *</label>
+                    <input type="text" id="usernameInput" required placeholder="例如：網頁特派員" maxlength="20">
+                </div>
+                <div>
+                    <label for="categoryInput">回饋類型 *</label>
+                    <select id="categoryInput" required>
+                        <option value="suggestion">功能建議 (Suggestion)</option>
+                        <option value="bug">錯誤回報 (Bug)</option>
+                        <option value="compliment">實用讚美 (Compliment)</option>
+                        <option value="other">其他問題 (Other)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="contentInput">留言內容 *</label>
+                <textarea id="contentInput" required placeholder="請輸入您寶貴的意見或回饋（上限 2000 字）..." maxlength="2000"></textarea>
+                <div class="word-counter" id="wordCounter">0 / 2000</div>
+            </div>
+            <div class="btn-group">
+                <button type="button" class="btn-cancel" id="cancelBtn">重設</button>
+                <button type="submit" class="btn-submit" id="submitBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    送出回饋
+                </button>
+            </div>
+        </form>
+
+        <div class="comment-section">
+            <h2 class="section-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                所有歷史留言
+            </h2>
+            <div id="commentList" class="comment-list">
+                <div class="status-message" id="loadingStatus">
+                    <div class="loading-spinner"></div>
+                    正在載入雲端留言資料，請稍候...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6Uq-L01U2tB28O-oYwPveE6DscbS3-7vF65b-h9XfC8YkXjXU07vHwKId_7m4EwLz/exec";
+        const commentForm = document.getElementById('commentForm');
+        const commentList = document.getElementById('commentList');
+        const submitBtn = document.getElementById('submitBtn');
+        const loadingStatus = document.getElementById('loadingStatus');
+        const textarea = document.getElementById('contentInput');
+        const wordCounter = document.getElementById('wordCounter');
+        let isFormDirty = false;
+        let activeReplyFormId = null;
+
+        document.addEventListener('DOMContentLoaded', fetchComments);
+        commentForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const d = {
+                action: 'add',
+                name: document.getElementById('usernameInput').value.trim(),
+                category: document.getElementById('categoryInput').value,
+                content: textarea.value.trim(),
+                parentId: ''
+            };
+            await sendComment(d, commentForm);
+        });
+
+        async function fetchComments() {
+            try {
+                const r = await fetch(`${SCRIPT_URL}?action=get`);
+                if (!r.ok) throw new Error('網路回應不正確');
+                const res = await r.json();
+                if (res.status === 'success') {
+                    renderComments(res.data);
+                } else {
+                    showError('撈取資料失敗：' + res.message);
+                }
+            } catch (err) {
+                showError('無法連線到雲端資料庫，請檢查後端 GAS 部署設定。' + err.message);
+            }
+        }
+
+        function renderComments(data) {
+            commentList.innerHTML = '';
+            if (!data || data.length === 0) {
+                commentList.innerHTML = '<div class="status-message">目前尚無留言，快來當第一個留言的人吧！</div>';
+                return;
+            }
+            const m = new Map();
+            data.forEach(c => m.set(String(c.id), { ...c, children: [] }));
+            const roots = [];
+            data.forEach(c => {
+                const node = m.get(String(c.id));
+                if (c.parentId && m.has(String(c.parentId))) {
+                    m.get(String(c.parentId)).children.push(node);
+                } else {
+                    roots.push(node);
+                }
+            });
+            roots.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+            roots.forEach(r => commentList.appendChild(createNodeElement(r, true)));
+        }
+
+        function createNodeElement(node, isRoot = false) {
+            const wrapper = document.createElement('div');
+            wrapper.className = `comment-node ${isRoot ? 'root-node' : ''}`;
+            wrapper.id = `node-${node.id}`;
+            const card = document.createElement('div');
+            card.className = 'comment-card';
+            const catNames = { suggestion:'建議', bug:'錯誤', compliment:'讚美', other:'其他' };
+            const initial = node.name ? node.name.charAt(0) : '?';
+            const timeStr = node.timestamp ? new Date(node.timestamp).toLocaleString('zh-TW', { hour12: false }) : '';
+            card.innerHTML = `
+                <div class="comment-header">
+                    <div class="user-info">
+                        <div class="avatar">${initial}</div>
+                        <div class="meta-text">
+                            <span class="username">${escapeHtml(node.name)}</span>
+                            <span class="timestamp">${timeStr}</span>
+                        </div>
+                    </div>
+                    <span class="badge badge-${node.category}">${catNames[node.category] || '未知'}</span>
+                </div>
+                <div class="comment-body">${escapeHtml(node.content)}</div>
+                <div class="comment-footer">
+                    <button class="action-btn" onclick="handleLike('${node.id}', this)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+                        <span>讚 (${node.likes || 0})</span>
+                    </button>
+                    <button class="action-btn" onclick="toggleReplyForm('${node.id}')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+                        回覆
+                    </button>
+                </div>
+            `;
+            wrapper.appendChild(card);
+            const repliesDiv = document.createElement('div');
+            repliesDiv.className = 'replies-container';
+            repliesDiv.id = `replies-${node.id}`;
+            if (node.children && node.children.length > 0) {
+                node.children.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+                node.children.forEach(child => repliesDiv.appendChild(createNodeElement(child, false)));
+            }
+            wrapper.appendChild(repliesDiv);
+            return wrapper;
+        }
+
+        function toggleReplyForm(parentId) {
+            const targetContainer = document.getElementById(`node-${parentId}`);
+            if (!targetContainer) return;
+            const existing = document.getElementById(`reply-form-${parentId}`);
+            if (existing) {
+                existing.remove();
+                activeReplyFormId = null;
+                return;
+            }
+            if (activeReplyFormId) {
+                const prev = document.getElementById(`reply-form-${activeReplyFormId}`);
+                if (prev) prev.remove();
+            }
+            const f = document.createElement('div');
+            f.className = 'reply-form-wrapper';
+            f.id = `reply-form-${parentId}`;
+            f.innerHTML = `
+                <form onsubmit="handleReplySubmit(event, '${parentId}')">
+                    <div class="form-row" style="margin-bottom:0.75rem;">
+                        <div>
+                            <label>您的暱稱 *</label>
+                            <input type="text" id="r-name-${parentId}" required placeholder="回覆暱稱" maxlength="20">
+                        </div>
+                        <div>
+                            <label>回饋類型 *</label>
+                            <select id="r-cat-${parentId}" required>
+                                <option value="suggestion">功能建議</option>
+                                <option value="bug">錯誤回報</option>
+                                <option value="compliment" selected>實用讚美</option>
+                                <option value="other">其他問題</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0.75rem;">
+                        <label>回覆內容 *</label>
+                        <textarea id="r-content-${parentId}" required placeholder="請輸入回覆內容..." style="min-height:80px;" maxlength="2000"></textarea>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" class="btn-cancel" onclick="toggleReplyForm('${parentId}')" style="padding:0.5rem 1rem; font-size:0.85rem;">取消</button>
+                        <button type="submit" class="btn-submit" id="r-sub-${parentId}" style="padding:0.5rem 1rem; font-size:0.85rem;">送出回覆</button>
+                    </div>
+                </form>
+            `;
+            const repliesBox = document.getElementById(`replies-${parentId}`);
+            targetContainer.insertBefore(f, repliesBox);
+            activeReplyFormId = parentId;
+            document.getElementById(`r-name-${parentId}`).focus();
+        }
+
+        async function handleReplySubmit(e, parentId) {
+            e.preventDefault();
+            const formElement = e.target;
+            const sBtn = document.getElementById(`r-sub-${parentId}`);
+            if (sBtn) sBtn.disabled = true;
+            const d = {
+                action: 'add',
+                name: document.getElementById(`r-name-${parentId}`).value.trim(),
+                category: document.getElementById(`r-cat-${parentId}`).value,
+                content: document.getElementById(`r-content-${parentId}`).value.trim(),
+                parentId: parentId
+            };
+            await sendComment(d, formElement, sBtn);
+            activeReplyFormId = null;
+        }
+
+        async function sendComment(payload, formEl, specificBtn = null) {
+            const targetBtn = specificBtn || submitBtn;
+            targetBtn.disabled = true;
+            const originText = targetBtn.innerHTML;
+            targetBtn.innerText = '傳送中...';
+            try {
+                const r = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                formEl.reset();
+                if (!specificBtn) {
+                    wordCounter.textContent = "0 / 2000";
+                    isFormDirty = false;
+                } else {
+                    const wrap = document.getElementById(`reply-form-${payload.parentId}`);
+                    if (wrap) wrap.remove();
+                }
+                commentList.innerHTML = `
+                    <div class="status-message">
+                        <div class="loading-spinner"></div>
+                        留言發送成功！正在重新整理留言板...
+                    </div>`;
+                setTimeout(fetchComments, 1500);
+            } catch (err) {
+                alert('發送失敗，請檢查網路連線或 GAS 權限設定。' + err.message);
+                targetBtn.disabled = false;
+                targetBtn.innerHTML = originText;
+            }
+        }
+
+        async function handleLike(id, btn) {
+            if (btn.classList.contains('liked')) return;
+            btn.classList.add('liked');
+            const span = btn.querySelector('span');
+            try {
+                const r = await fetch(`${SCRIPT_URL}?action=like&id=${id}`);
+                const res = await r.json();
+                if (res.status === 'success') {
+                    if (span) span.innerText = `讚 (${res.likes})`;
+                }
+            } catch (err) {
+                console.error('按讚失敗', err);
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            const curr = document.documentElement.getAttribute('data-theme');
+            const next = curr === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+            updateThemeIcon(next);
+        });
+        function updateThemeIcon(t) { document.getElementById('themeIcon').innerHTML = t === 'light' ? '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line>' : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>'; }
+        textarea.addEventListener('input', () => { isFormDirty = textarea.value.length > 0; const len = textarea.value.length; wordCounter.textContent = `${len} / 2000`; wordCounter.className = len >= 1900 ? 'word-counter danger' : 'word-counter'; });
+        window.addEventListener('beforeunload', (e) => { if (isFormDirty) { e.preventDefault(); e.returnValue = '未送出'; } });
+        document.getElementById('cancelBtn').addEventListener('click', () => { commentForm.reset(); document.getElementById('wordCounter').textContent = "0 / 2000"; isFormDirty = false; });
+        function showError(m) { if (loadingStatus) loadingStatus.remove(); const d = document.createElement('div'); d.className = 'status-message error-box'; d.innerText = m; commentList.innerHTML = ''; commentList.appendChild(d); }
+    </script>
+</body>
+</html>
